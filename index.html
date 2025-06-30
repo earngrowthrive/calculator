@@ -90,6 +90,16 @@
             // Cash Flow Variables
             const [cashFlows, setCashFlows] = useState([]);
 
+            // Amortization Variables
+            const [amortVars, setAmortVars] = useState({
+                principal: 0,
+                rate: 0,
+                payments: 0,
+                payment: 0
+            });
+            const [amortSchedule, setAmortSchedule] = useState([]);
+            const [showSchedule, setShowSchedule] = useState(false);
+
             const [lastOperation, setLastOperation] = useState('');
 
             // Basic calculator functions
@@ -247,6 +257,57 @@
                 setDisplay('0');
             };
 
+            // Amortization functions
+            const storeAmort = (variable) => {
+                const value = parseFloat(display);
+                setAmortVars(prev => ({ ...prev, [variable]: value }));
+                setDisplay('0');
+            };
+
+            const calculateAmortPayment = () => {
+                const { principal, rate, payments } = amortVars;
+                const monthlyRate = rate / 100 / 12;
+                
+                if (monthlyRate === 0) {
+                    const payment = principal / payments;
+                    setAmortVars(prev => ({ ...prev, payment }));
+                    setDisplay(payment.toFixed(2));
+                } else {
+                    const payment = principal * (monthlyRate * Math.pow(1 + monthlyRate, payments)) / (Math.pow(1 + monthlyRate, payments) - 1);
+                    setAmortVars(prev => ({ ...prev, payment }));
+                    setDisplay(payment.toFixed(2));
+                }
+                setLastOperation('calculate');
+            };
+
+            const generateAmortSchedule = () => {
+                const { principal, rate, payments, payment } = amortVars;
+                const monthlyRate = rate / 100 / 12;
+                let balance = principal;
+                const schedule = [];
+
+                for (let i = 1; i <= payments; i++) {
+                    const interestPayment = balance * monthlyRate;
+                    const principalPayment = payment - interestPayment;
+                    balance = balance - principalPayment;
+
+                    schedule.push({
+                        payment: i,
+                        paymentAmount: payment,
+                        principal: principalPayment,
+                        interest: interestPayment,
+                        balance: Math.max(0, balance)
+                    });
+
+                    if (balance <= 0) break;
+                }
+
+                setAmortSchedule(schedule);
+                setShowSchedule(true);
+                setDisplay(`${schedule.length} payments`);
+                setLastOperation('calculate');
+            };
+
             // Button component
             const Button = ({ children, onClick, className = '', isActive = false }) => (
                 <button
@@ -303,6 +364,14 @@
                                 Cash Flows: [{cashFlows.join(', ')}]
                             </div>
                         )}
+                        {mode === 'amort' && (
+                            <div className="mt-2 text-xs text-gray-300 grid grid-cols-2 gap-2">
+                                <div>Principal: {amortVars.principal}</div>
+                                <div>Rate: {amortVars.rate}%</div>
+                                <div>Payments: {amortVars.payments}</div>
+                                <div>Payment: {amortVars.payment.toFixed(2)}</div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Mode Selection */}
@@ -343,6 +412,24 @@
                         </div>
                     )}
 
+                    {mode === 'amort' && (
+                        <>
+                            <div className="grid grid-cols-4 gap-2 mb-2">
+                                <Button onClick={() => storeAmort('principal')} className="text-xs">Principal</Button>
+                                <Button onClick={() => storeAmort('rate')} className="text-xs">Rate %</Button>
+                                <Button onClick={() => storeAmort('payments')} className="text-xs"># Pmts</Button>
+                                <Button onClick={() => storeAmort('payment')} className="text-xs">Payment</Button>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 mb-4">
+                                <Button onClick={calculateAmortPayment} className="text-xs bg-blue-100">Calc PMT</Button>
+                                <Button onClick={generateAmortSchedule} className="text-xs bg-green-100">Schedule</Button>
+                                <Button onClick={() => setShowSchedule(!showSchedule)} className="text-xs bg-gray-200">
+                                    {showSchedule ? 'Hide' : 'Show'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
+
                     {/* Number Pad */}
                     <div className="grid grid-cols-4 gap-2">
                         {/* Row 1 */}
@@ -375,13 +462,43 @@
                         <Button onClick={() => setDisplay((parseFloat(display) / 100).toString())}>%</Button>
                     </div>
 
+                    {/* Amortization Schedule Display */}
+                    {mode === 'amort' && showSchedule && amortSchedule.length > 0 && (
+                        <div className="mt-4 bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+                            <h3 className="text-white text-sm font-semibold mb-2">Amortization Schedule</h3>
+                            <div className="text-xs">
+                                <div className="grid grid-cols-5 gap-1 text-gray-300 font-semibold mb-1 sticky top-0 bg-gray-800">
+                                    <div>#</div>
+                                    <div>Payment</div>
+                                    <div>Principal</div>
+                                    <div>Interest</div>
+                                    <div>Balance</div>
+                                </div>
+                                {amortSchedule.slice(0, 20).map((row, index) => (
+                                    <div key={index} className="grid grid-cols-5 gap-1 text-gray-100 py-1 border-b border-gray-700">
+                                        <div>{row.payment}</div>
+                                        <div>{row.paymentAmount.toFixed(2)}</div>
+                                        <div>{row.principal.toFixed(2)}</div>
+                                        <div>{row.interest.toFixed(2)}</div>
+                                        <div>{row.balance.toFixed(2)}</div>
+                                    </div>
+                                ))}
+                                {amortSchedule.length > 20 && (
+                                    <div className="text-gray-400 text-center mt-2">
+                                        Showing first 20 of {amortSchedule.length} payments
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Instructions */}
                     <div className="mt-4 text-xs text-gray-400 text-center">
                         {mode === 'tvm' && 'Enter values, store with variable buttons, then calculate unknown variable'}
                         {mode === 'cashflow' && 'Enter cash flows, add with "Add CF", then calculate NPV or IRR'}
                         {mode === 'basic' && 'Basic calculator operations'}
                         {mode === 'bond' && 'Bond calculations (coming soon)'}
-                        {mode === 'amort' && 'Amortization schedules (coming soon)'}
+                        {mode === 'amort' && 'Enter loan details, calculate payment, then generate amortization schedule'}
                     </div>
 
                     {/* Footer */}
